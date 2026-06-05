@@ -5,7 +5,7 @@ pomelo! {
     %syntax_error { extra.push('X'); Ok(()) }
 
     start ::= lines;
-    lines ::= line;
+    lines ::= line0;
     lines ::= lines line0;
 
     line0 ::= error Eol { extra.push('0'); }

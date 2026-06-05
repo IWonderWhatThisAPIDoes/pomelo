@@ -10,7 +10,7 @@ pomelo! {
     }
 
     start ::= lines;
-    lines ::= line;
+    lines ::= line0;
     lines ::= lines line0;
 
     line0 ::= error Eol { }
