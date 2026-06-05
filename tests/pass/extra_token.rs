@@ -9,7 +9,7 @@ pomelo! {
     %type lines Vec<(usize, String)>;
     %type input Vec<(usize, String)>;
     %syntax_error {
-        let x: usize = token.map(Token::into_extra).unwrap_or(0);
+        let x: usize = token.map(Token::extra).copied().unwrap_or(0);
         Ok(())
     }
 

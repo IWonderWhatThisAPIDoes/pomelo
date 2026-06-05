@@ -2706,9 +2706,11 @@ impl Pomelo {
                 res
             }
             fn yy_parse_token_2 #yy_generics_impl(yy: &mut Parser #yy_generics,
-                                                        yymajor: i32, yyminor: YYMinorType #yy_generics) -> ::core::result::Result<(), #yyerrtype>
+                                                        yymajor: i32, mut yyminor: YYMinorType #yy_generics) -> ::core::result::Result<(), #yyerrtype>
                 #yy_generics_where
             {
+                // Whether this token has already caused a syntax error
+                let mut yyerrorhit = false;
 
                 while yy.yystatus.is_normal() {
                     let yyact = yy_find_shift_action(yy, yymajor);
@@ -2739,24 +2741,32 @@ impl Pomelo {
                         if YYERRORSYMBOL != 0 {
                             /* This is what we do if the grammar does define ERROR:
                              **
-                             **  * Begin popping the stack until we enter either:
-                             **     - we find the error symbol: discard the input token.
-                             **     - we get into a state where it is legal to shift the
-                             **       error symbol: we call %syntax_error and use the result
-                             **       to create an shift the error symbol.
-                             **     - we empty the stack: we fail the parse.
+                             **  * Call the %syntax_error function.
                              **
-                             **  * Begin accepting and shifting new tokens.
+                             **  * Begin popping the stack until we enter a state where
+                             **    it is legal to shift the error symbol, then shift
+                             **    the error symbol.
+                             **
+                             **  * Set the error count to three.
+                             **
+                             **  * Begin accepting and shifting new tokens.  No new error
+                             **    processing will occur until three tokens have been
+                             **    shifted successfully.
                              */
                             if yymajor == 0 { //EOI
                                 return Err(yy_parse_failed(yy));
+                            }
+                            if yyerrorhit {
+                                // If the input token cannot be used even after
+                                // error handling, discard it
+                                break;
                             }
                             while let Some(top) = yy.yystack.last() {
                                 if top.major == YYERRORSYMBOL { break; }
 
                                 let yyact = yy_find_reduce_action(yy, YYERRORSYMBOL);
                                 if yyact < YYNSTATE {
-                                    let e = yy_syntax_error(yy, yymajor, yyminor, expected)?;
+                                    let e = yy_syntax_error(yy, yymajor, &mut yyminor, expected)?;
                                     yy_shift(yy, yyact, YYERRORSYMBOL, e)?;
                                     break;
                                 }
@@ -2766,7 +2776,7 @@ impl Pomelo {
                                 return Err(yy_parse_failed(yy));
                             }
                             yy.error_count = 3;
-                            break;
+                            yyerrorhit = true;
                         } else {
                             /* This is what we do if the grammar does not define ERROR:
                              **
@@ -2781,7 +2791,7 @@ impl Pomelo {
                                 return Err(yy_parse_failed(yy));
                             }
                             if yy.error_count == 0 {
-                                yy_syntax_error(yy, yymajor, yyminor, expected)?;
+                                yy_syntax_error(yy, yymajor, &mut yyminor, expected)?;
                             }
                             yy.error_count = 3;
                             break;
@@ -2888,15 +2898,33 @@ impl Pomelo {
         let error_yydt = Ident::new(&format!("YY{}", error_symbol.dt_num), Span::call_site());
         let ty_span = yysyntaxerror.span();
         src.extend(quote_spanned!{ty_span=>
-            fn yy_syntax_error_2 #yy_generics_impl(yy: &mut Parser #yy_generics, yymajor: i32, yyminor: YYMinorType #yy_generics, expected: ExpectedTokens #yy_generics) -> ::core::result::Result<#error_ty, #yyerrtype>
+            fn yy_syntax_error_handler #yy_generics_impl (
+                token: Option<&Token #yy_generics_token>,
+                extra: &mut #yyextratype,
+                mut expected: ExpectedTokens #yy_generics
+            ) -> ::core::result::Result<#error_ty, #yyerrtype>
                 #yy_generics_where
             {
-                let token = token_build(yymajor, yyminor);
-                let extra = &mut yy.extra;
-                let mut expected = expected;
                 #yysyntaxerror
             }
-            fn yy_syntax_error #yy_generics_impl(yy: &mut Parser #yy_generics, yymajor: i32, yyminor: YYMinorType #yy_generics, expected: ExpectedTokens #yy_generics) -> ::core::result::Result<YYMinorType #yy_generics, #yyerrtype>
+            fn yy_syntax_error_2 #yy_generics_impl(yy: &mut Parser #yy_generics, yymajor: i32, yyminor: &mut YYMinorType #yy_generics, expected: ExpectedTokens #yy_generics) -> ::core::result::Result<#error_ty, #yyerrtype>
+                #yy_generics_where
+            {
+                // Prepare values that should be exposed to the %syntax_error handler
+                let token = token_build(yymajor, std::mem::replace(yyminor, YYMinorType::YY0(())));
+                let extra = &mut yy.extra;
+                let mut expected = expected;
+                // Call the %syntax_error handler
+                let result = yy_syntax_error_handler(token.as_ref(), extra, expected);
+                // Re-extract the minor value so we can try to shift it again
+                // If there is no token, we are at the end of input,
+                // so leave the minor empty
+                if let Some(token) = token {
+                    *yyminor = token_value(token).1;
+                }
+                result
+            }
+            fn yy_syntax_error #yy_generics_impl(yy: &mut Parser #yy_generics, yymajor: i32, yyminor: &mut YYMinorType #yy_generics, expected: ExpectedTokens #yy_generics) -> ::core::result::Result<YYMinorType #yy_generics, #yyerrtype>
                 #yy_generics_where
             {
                 let e = yy_syntax_error_2(yy, yymajor, yyminor, expected)?;

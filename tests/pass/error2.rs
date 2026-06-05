@@ -4,7 +4,7 @@ pomelo! {
     %extra_argument String;
     %syntax_error {
         extra.push('0');
-        assert_eq!(token, Some(Token::Two));
+        assert_eq!(token, Some(&Token::Two));
         Ok(())
     }
     %token #[derive(Debug, PartialEq)]

@@ -27,11 +27,12 @@ fn error() -> Result<(), ()> {
         One, Two, Three, Eol,
         //One, One, One, Eol,
         One, One, One, One, One, One, One, One, One, Eol,
+        One, Eol,
         One, Two, Three, Eol,
     ] {
         p.parse(t)?;
     }
-    assert_eq!(p.extra(), "1X01X01");
+    assert_eq!(p.extra(), "1X01X0X01");
     //no EOI here, the parser never ends
 
     Ok(())
